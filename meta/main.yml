@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   author: Johnathan Kupferer
-  description: Senior Architect
+  description: Remove OpenShift 4 installations from AWS when openshift-install destroy cluster is unavailable.
   company: Red Hat
   issue_tracker_url: http://github.com/jkupferer/openshift_aws_cleanup/issues
   license: GPL-3.0-only
