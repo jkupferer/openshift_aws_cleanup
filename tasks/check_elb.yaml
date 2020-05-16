@@ -1,0 +1,14 @@
+---
+- name: Get load-balancer tags for {{ _elb_name }}
+  command: >-
+    aws elb --region={{ _region }} describe-tags --load-balancer-name={{ _elb_name }}
+  changed_when: false
+  register: r_ec2_elb_tags
+
+- name: Remove elb {{ _elb_name }}
+  command: >-
+    aws elb --region={{ _region }} delete-load-balancer --load-balancer-name={{ _elb_name }}
+  when: _cluster_tag and _cluster_tag[22:] in _cluster_ids
+  vars:
+    _cluster_tag: >-
+      {{ r_ec2_elb_tags.stdout | from_json | json_query("TagDescriptions[0].Tags[?starts_with(Key, 'kubernetes.io/cluster/')].Key|[0]") }}

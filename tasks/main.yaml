@@ -1,0 +1,15 @@
+---
+- name: Check for required variables
+  assert:
+    that:
+    - openshift_aws_cleanup_cluster_ids is defined
+    - openshift_aws_cleanup_cluster_ids | length > 0
+    - openshift_aws_cleanup_region is defined
+
+- name: Set cluster_names
+  include_tasks: cleanup.yaml
+  vars:
+    _cluster_ids: "{{ openshift_aws_cleanup_cluster_ids }}"
+    _cluster_names: >-
+      {{ openshift_aws_cleanup_cluster_ids | map('regex_replace', '^cluster-(.+)-.....$', '\1') | list }}
+    _region: "{{ openshift_aws_cleanup_region }}"

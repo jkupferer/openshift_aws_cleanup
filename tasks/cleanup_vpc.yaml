@@ -1,0 +1,140 @@
+---
+- name: Get route tables for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} describe-route-tables --filters "Name=vpc-id,Values={{ _vpc_id }}"
+  register: r_vpc_route_tables
+  changed_when: false
+
+- name: Delete route tables for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-route-table --route-table-id {{ _route_table_id }}
+  loop: "{{ r_vpc_route_tables.stdout | from_json | json_query('RouteTables') }}"
+  loop_control:
+    loop_var: _route_table
+    label: "{{ _route_table_name }}"
+  vars:
+    _route_table_id: "{{ _route_table.RouteTableId }}"
+    _route_table_name: "{{ _vpc | json_query(_name_tag_query) }}"
+    _name_tag_query: "Tags[?Key=='Name'].Value|[0]"
+  when: not _route_table | json_query('Associations[?Main]')
+
+- name: Get Network ACLs for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} describe-network-acls --filters "Name=vpc-id,Values={{ _vpc_id }}"
+  register: r_vpc_network_acls
+  changed_when: false
+
+- name: Delete Network ACLs for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-network-acl --network-acl-id {{ _network_acl_id }}
+  loop: "{{ r_vpc_network_acls.stdout | from_json | json_query('NetworkAcls') }}"
+  loop_control:
+    loop_var: _network_acl
+    label: "{{ _network_acl_id }}"
+  vars:
+    _network_acl_id: "{{ _network_acl.NetworkAclId }}"
+  when: not _network_acl.IsDefault | default(false) | bool
+
+- name: Get Internet Gateways for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} describe-internet-gateways --filters "Name=attachment.vpc-id,Values={{ _vpc_id }}"
+  register: r_vpc_internet_gatways
+  changed_when: false
+
+- name: Detach Internet Gateways from VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} detach-internet-gateway --internet-gateway-id {{ _internet_gateway_id }} --vpc-id {{ _vpc_id }}
+  loop: "{{ r_vpc_internet_gatways.stdout | from_json | json_query('InternetGateways') }}"
+  loop_control:
+    loop_var: _internet_gateway
+    label: "{{ _internet_gateway_id }}:{{ _internet_gateway_name }}"
+  vars:
+    _internet_gateway_id: "{{ _internet_gateway.InternetGatewayId }}"
+    _internet_gateway_name: "{{ _internet_gateway | json_query(_name_tag_query) }}"
+    _internet_gateway_cluster_tag: "{{ _internet_gateway | json_query(_cluster_tag_query) }}"
+    _cluster_tag_query: "InternetGateways[0].Tags[?starts_with(Key,'kubernetes.io/cluster/')].Key|[0]"
+    _name_tag_query: "Tags[?Key=='Name'].Value|[0]"
+  when: >-
+    _internet_gateway_cluster_tag == _vpc_cluster_tag
+
+- name: Delete Internet Gateways for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-internet-gateway --internet-gateway-id {{ _internet_gateway_id }}
+  loop: "{{ r_vpc_internet_gatways.stdout | from_json | json_query('InternetGateways') }}"
+  loop_control:
+    loop_var: _internet_gateway
+    label: "{{ _internet_gateway_id }}:{{ _internet_gateway_name }}"
+  vars:
+    _internet_gateway_id: "{{ _internet_gateway.InternetGatewayId }}"
+    _internet_gateway_name: "{{ _internet_gateway | json_query(_name_tag_query) }}"
+    _internet_gateway_cluster_tag: "{{ _internet_gateway | json_query(_cluster_tag_query) }}"
+    _cluster_tag_query: "InternetGateways[0].Tags[?starts_with(Key,'kubernetes.io/cluster/')].Key|[0]"
+    _name_tag_query: "Tags[?Key=='Name'].Value|[0]"
+  when: >-
+    _internet_gateway_cluster_tag == _vpc_cluster_tag
+
+- name: Get security groups for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} describe-security-groups --filters "Name=vpc-id,Values={{ _vpc_id }}"
+  register: r_vpc_security_groups
+  changed_when: false
+
+- name: Remove ingress rules from security groups for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} revoke-security-group-ingress --group-id={{ _group_id }}
+    --ip-permissions={{ _ip_permissions | to_json | quote }}
+  loop: "{{ r_vpc_security_groups.stdout | from_json | json_query('SecurityGroups') }}"
+  loop_control:
+    loop_var: _group
+    label: "{{ _group_name }}"
+  vars:
+    _group_id: "{{ _group.GroupId }}"
+    _group_name: "{{ _group.GroupName }}"
+    _ip_permissions: "{{ _group.IpPermissions }}"
+  when: _ip_permissions | length > 0
+
+- name: Remove egress rules from security groups for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} revoke-security-group-egress --group-id={{ _group_id }}
+    --ip-permissions={{ _ip_permissions | to_json | quote }}
+  loop: "{{ r_vpc_security_groups.stdout | from_json | json_query('SecurityGroups') }}"
+  loop_control:
+    loop_var: _group
+    label: "{{ _group_name }}"
+  vars:
+    _group_id: "{{ _group.GroupId }}"
+    _group_name: "{{ _group.GroupName }}"
+    _ip_permissions: "{{ _group.IpPermissionsEgress }}"
+  when: _ip_permissions | length > 0
+
+- name: Delete security groups for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-security-group --group-id={{ _group_id }}
+  loop: "{{ r_vpc_security_groups.stdout | from_json | json_query('SecurityGroups') }}"
+  loop_control:
+    loop_var: _group
+    label: "{{ _group_name }}"
+  vars:
+    _group_id: "{{ _group.GroupId }}"
+    _group_name: "{{ _group.GroupName }}"
+  when: _group_name != 'default'
+
+- name: Get endpoints for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} describe-vpc-endpoints --filters "Name=vpc-id,Values={{ _vpc_id }}"
+  register: r_vpc_endpoints
+  changed_when: false
+
+- name: Delete endpoints for VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-vpc-endpoints --vpc-endpoint-ids
+    {% for id in _vpc_endpoint_ids %}
+    {{ id }}
+    {% endfor %}
+  vars:
+    _vpc_endpoint_ids: "{{ r_vpc_endpoints.stdout | from_json | json_query('VpcEndpoints[].VpcEndpointId') }}"
+  when: _vpc_endpoint_ids | length > 0
+
+- name: Delete VPC {{ _vpc_name }}
+  command: >-
+    aws ec2 --region={{ _region }} delete-vpc --vpc-id={{ _vpc_id }}

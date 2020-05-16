@@ -1,0 +1,25 @@
+---
+- name: Get subnets
+  command: >-
+    aws ec2 --region={{ _region }} describe-subnets
+    --filter "Name=tag-key,Values={% for _cluster_id in _cluster_ids %}{% if not loop.first %},{% endif %}kubernetes.io/cluster/{{ _cluster_id }}{% endfor %}"
+  changed_when: false
+  register: r_ec2_subnets
+
+- name: Remove interfaces from subnets
+  include_tasks: remove_interfaces_from_subnets.yaml
+  vars:
+    _subnet_ids: "{{ r_ec2_subnets.stdout | from_json | json_query('Subnets[].SubnetId') }}"
+
+- name: Delete subnets
+  command: >-
+    aws ec2 --region={{ _region }} delete-subnet --subnet-id={{ _subnet_id }}
+  loop: >-
+    {{ r_ec2_subnets.stdout | from_json | json_query('Subnets') }}
+  loop_control:
+    loop_var: _subnet
+    label: "{{ _subnet_name }}"
+  vars:
+    _subnet_id: "{{ _subnet.SubnetId }}"
+    _subnet_name: "{{ _subnet | json_query(_name_tag_query) }}"
+    _name_tag_query: "Tags[?Key=='Name'].Value|[0]"

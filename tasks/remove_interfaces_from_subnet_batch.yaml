@@ -1,0 +1,19 @@
+---
+- name: Delete network interfaces
+  command: >-
+    aws ec2 delete-network-interface --network-interface-id={{ _interface_id }}
+  loop: "{{ _batch_ec2_subnet_interfaces }}"
+  loop_control:
+    loop_var: _interface
+    label: "{{ _interface_name }}"
+  vars:
+    _interface_id: "{{ _interface.NetworkInterfaceId\ }}"
+    _interface_name: "{{ _interface | json_query(_name_tag_query) }}"
+    _name_tag_query: "TagSet[?Key=='Name'].Value|[0]"
+  register: r_delete_network_interfaces
+  failed_when: >-
+    r_delete_network_interfaces.rc != 0 and
+    'InvalidNetworkInterfaceID.NotFound' not in r_delete_network_interfaces.stderr
+  until: not r_delete_network_interfaces.failed
+  retries: 5
+  delay: 10

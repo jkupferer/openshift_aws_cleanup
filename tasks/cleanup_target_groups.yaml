@@ -1,0 +1,17 @@
+---
+- name: Get target groups
+  command: >-
+    aws elbv2 --region={{ _region }} describe-target-groups
+  changed_when: false
+  register: r_elbv2_target_groups
+
+- name: Check target groups
+  include_tasks: check_elbv2_target_group.yaml
+  loop: >-
+    {{ r_elbv2_target_groups.stdout | from_json | json_query('TargetGroups') }}
+  loop_control:
+    loop_var: _elbv2_target_group
+    label: "{{ _elbv2_target_group_name }}"
+  vars:
+    _elbv2_target_group_name: "{{ _elbv2_target_group.TargetGroupName }}"
+    _elbv2_target_group_arn: "{{ _elbv2_target_group.TargetGroupArn }}"

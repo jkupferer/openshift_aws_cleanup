@@ -1,0 +1,41 @@
+---
+- name: Get resource records for {{ _route53_hosted_zone_name }}
+  command:
+    aws route53 list-resource-record-sets --hosted-zone-id={{ _route53_hosted_zone_id }}
+  changed_when: false
+  register: r_get_route53_resource_record_sets
+
+- name: Create temporary file for {{ _route53_hosted_zone_name }} delete change set
+  tempfile:
+    state: file
+  changed_when: false
+  register: r_delete_change_set_temp
+
+- name: Write out delete change set for {{ _route53_hosted_zone_name }}
+  copy:
+    content: "{{ change_batch | from_yaml | to_json }}"
+    dest: "{{ r_delete_change_set_temp.path }}"
+  vars:
+    change_batch: |
+      Changes:
+      {% for _resource_record_set in r_get_route53_resource_record_sets.stdout | from_json | json_query('ResourceRecordSets') %}
+      {%   if _resource_record_set.Type not in ['SOA', 'NS'] %}
+      - Action: DELETE
+        ResourceRecordSet: {{ _resource_record_set | to_json }}
+      {%   endif %}
+      {% endfor %}
+  changed_when: false
+
+- name: Delete resource records for {{ _route53_hosted_zone_name }}
+  command:
+    aws route53 change-resource-record-sets --hosted-zone-id={{ _route53_hosted_zone_id }} --change-batch=file://{{ r_delete_change_set_temp.path }}
+
+- name: Remove temporary file for {{ _route53_hosted_zone_name }} delete change set
+  file:
+    path: "{{ r_delete_change_set_temp.path }}"
+    state: absent
+  changed_when: false
+
+- name: Remove route53 hosted zone {{ _route53_hosted_zone_name }}
+  command: >-
+    aws route53 delete-hosted-zone --id={{ _route53_hosted_zone_id }}

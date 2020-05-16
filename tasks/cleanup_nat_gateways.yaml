@@ -1,0 +1,20 @@
+---
+- name: Get nat gateways
+  command: >-
+    aws ec2 --region={{ _region }} describe-nat-gateways
+    --filter "Name=tag-key,Values={% for _cluster_id in _cluster_ids %}{% if not loop.first %},{% endif %}kubernetes.io/cluster/{{ _cluster_id }}{% endfor %}"
+  changed_when: false
+  register: r_ec2_nat_gateways
+
+- name: Remove nat gateways
+  command: >-
+    aws ec2 --region={{ _region }} delete-nat-gateway --nat-gateway-id={{ _ec2_nat_gateway_id }}
+  loop: >-
+    {{ r_ec2_nat_gateways.stdout | from_json | json_query('NatGateways') }}
+  loop_control:
+    loop_var: _ec2_nat_gateway
+    label: "{{ _ec2_nat_gateway_name }}"
+  vars:
+    _ec2_nat_gateway_id: "{{ _ec2_nat_gateway.NatGatewayId }}"
+    _ec2_nat_gateway_name: "{{ _ec2_nat_gateway | json_query(_name_tag_query) }}"
+    _name_tag_query: "Tags[?Key=='Name'].Value|[0]"

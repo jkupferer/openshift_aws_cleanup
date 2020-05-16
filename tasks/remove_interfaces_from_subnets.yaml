@@ -1,0 +1,25 @@
+---
+- name: Get interfaces for subnets
+  command: >-
+    aws ec2 describe-network-interfaces --region={{ _region }}
+    --filter "Name=subnet-id,Values={{ _batch_subnet_ids | join(',') }}"
+  loop: "{{ range(0, ((_subnet_ids | length + 199) / 200) | int) | list }}"
+  loop_control:
+    loop_var: _batch_number
+    label: subnet-batch-{{ _batch_number }}
+  vars:
+    _batch_first: "{{ 200 * (_batch_number | int) }}"
+    _batch_last: "{{ 200 * (1 + _batch_number | int) }}"
+    _batch_subnet_ids: "{{ _subnet_ids[ 200 * (_batch_number | int) : 200 * (1 + _batch_number | int) ] }}"
+  changed_when: false
+  register: r_ec2_subnet_interfaces
+
+- name: Remove interfaces from subnet batches
+  include_tasks: tasks/remove_interfaces_from_subnet_batch.yaml
+  loop: "{{ r_ec2_subnet_interfaces.results | default([]) }}"
+  loop_control:
+    loop_var: _ec2_subnet_interfaces_batch
+    label: subnet-batch-{{ _ec2_subnet_interfaces_batch._batch_number }}
+  vars:
+    _batch_ec2_subnet_interfaces: >-
+      {{ _ec2_subnet_interfaces_batch.stdout | from_json | json_query('NetworkInterfaces') }}

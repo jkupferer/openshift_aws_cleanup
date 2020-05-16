@@ -1,0 +1,93 @@
+---
+- name: Get cluster IAM Users for {{ _cluster_id }}
+  command: >-
+    aws iam list-users --query "Users[?starts_with(UserName,'{{ _cluster_name }}-')]"
+  changed_when: false
+  register: r_iam_users
+
+- name: Get cluster IAM User Tags for {{ _cluster_id }}
+  command: >-
+    aws iam list-user-tags --user-name {{ _iam_user_name }}
+  changed_when: false
+  register: r_iam_user_tags
+  loop: "{{ r_iam_users.stdout | from_json }}"
+  loop_control:
+    loop_var: _iam_user
+    label: "{{ _iam_user_name }}"
+  vars:
+    _iam_user_arn: "{{ _iam_user.Arn }}"
+    _iam_user_id: "{{ _iam_user.UserId }}"
+    _iam_user_name: "{{ _iam_user.UserName }}"
+
+- name: List cluster IAM User Policies for {{ _cluster_id }}
+  command: >-
+    aws iam list-user-policies --user-name {{ _iam_user_name }}
+  register: r_iam_user_policies
+  changed_when: false
+  loop: "{{ r_iam_user_tags.results }}"
+  loop_control:
+    loop_var: _iam_user_tag_result
+    label: "{{ _iam_user_name }}"
+  vars:
+    _iam_user_name: "{{ _iam_user_tag_result._iam_user.UserName }}"
+    _iam_user_tags: >-
+      {{ _iam_user_tag_result.stdout | from_json | json_query("Tags[?Key=='kubernetes.io/cluster/" ~ _cluster_id ~ "']") }}
+  when: _iam_user_tags | length > 0
+
+- name: Delete user policies
+  shell: >-
+    {% for _iam_policy_name in _iam_policy_names %}
+    {% if not loop.first %}&&{% endif %}
+    aws iam delete-user-policy --user-name {{ _iam_user_name }} --policy-name {{ _iam_policy_name }}
+    {% endfor %}
+  loop: "{{ r_iam_user_policies | json_query('results[?!skipped]') }}"
+  loop_control:
+    loop_var: _iam_user_policy_result
+    label: "{{ _iam_user_name }}:{{ _iam_policy_names | join(',') }}"
+  vars:
+    _iam_user_name: "{{ _iam_user_policy_result._iam_user_tag_result._iam_user.UserName }}"
+    _iam_policy_names: "{{ _iam_user_policy_result.stdout | from_json | json_query('PolicyNames') }}"
+  when: _iam_policy_names | length > 0
+
+- name: List cluster IAM User Access Keys
+  command: >-
+    aws iam list-access-keys --user-name {{ _iam_user_name }}
+  register: r_iam_access_keys
+  changed_when: false
+  loop: "{{ r_iam_user_tags.results }}"
+  loop_control:
+    loop_var: _iam_user_tag_result
+    label: "{{ _iam_user_name }}"
+  vars:
+    _iam_user_name: "{{ _iam_user_tag_result._iam_user.UserName }}"
+    _iam_user_tags: >-
+      {{ _iam_user_tag_result.stdout | from_json | json_query("Tags[?Key=='kubernetes.io/cluster/" ~ _cluster_id ~ "']") }}
+  when: _iam_user_tags | length > 0
+
+- name: Delete User Access Keys for {{ _cluster_id }}
+  shell: >-
+    {% for _iam_access_key_id in _iam_access_key_ids %}
+    {% if not loop.first %}&&{% endif %}
+    aws iam delete-access-key --user-name {{ _iam_user_name }} --access-key-id {{ _iam_access_key_id }}
+    {% endfor %}
+  loop: "{{ r_iam_access_keys | json_query('results[?!skipped]') }}"
+  loop_control:
+    loop_var: _iam_access_keys_result
+    label: "{{ _iam_user_name }}:{{ _iam_access_key_ids | join(',') }}"
+  vars:
+    _iam_user_name: "{{ _iam_access_keys_result._iam_user_tag_result._iam_user.UserName }}"
+    _iam_access_key_ids: "{{ _iam_access_keys_result.stdout | from_json | json_query('AccessKeyMetadata[].AccessKeyId') }}"
+  when: _iam_access_key_ids | length > 0
+
+- name: Delete cluster IAM Users for {{ _cluster_id }}
+  command: >-
+    aws iam delete-user --user-name {{ _iam_user_name }}
+  loop: "{{ r_iam_user_tags.results }}"
+  loop_control:
+    loop_var: _iam_user_tag_result
+    label: "{{ _iam_user_name }}"
+  vars:
+    _iam_user_name: "{{ _iam_user_tag_result._iam_user.UserName }}"
+    _iam_user_tags: >-
+      {{ _iam_user_tag_result.stdout | from_json | json_query("Tags[?Key=='kubernetes.io/cluster/" ~ _cluster_id ~ "']") }}
+  when: _iam_user_tags | length > 0

@@ -1,0 +1,23 @@
+---
+- name: Get tags for route53 hosted zone {{ _route53_hosted_zone_name }}
+  command: >-
+    aws route53 list-tags-for-resource --resource-type hostedzone --resource-id {{ _route53_hosted_zone_id }}
+  register: r_route53_hosted_zone_tags
+  changed_when: false
+  failed_when: >-
+    r_route53_hosted_zone_tags.rc != 0 and
+    'No hosted zone found with ID' not in r_route53_hosted_zone_tags.stderr and
+    'NoSuchHostedZone' not in r_route53_hosted_zone_tags.stderr
+
+- name: Remove hosted zone {{ _route53_hosted_zone_name }}
+  include_tasks: remove_route53_hosted_zone.yaml
+  when: >-
+    r_route53_hosted_zone_tags.rc == 0 and (
+      (_cluster_tag and _cluster_tag[22:] in _cluster_ids) or
+      (_cluster_guid and _cluster_guid in _cluster_names)
+    )
+  vars:
+    _cluster_tag: >-
+      {{ r_route53_hosted_zone_tags.stdout | from_json | json_query("ResourceTagSet.Tags[?starts_with(Key, 'kubernetes.io/cluster/')].Key|[0]") }}
+    _cluster_guid: >-
+      {{ r_route53_hosted_zone_tags.stdout | from_json | json_query("ResourceTagSet.Tags[?Key=='guid'].Value|[0]") }}

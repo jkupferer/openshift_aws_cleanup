@@ -1,0 +1,32 @@
+---
+- name: Clean-up route53
+  include_tasks: cleanup_route53.yaml
+
+- name: Clean-up load balancers
+  include_tasks: cleanup_elbs.yaml
+
+- name: Clean-up target groups
+  include_tasks: cleanup_target_groups.yaml
+
+- name: Clean-up NAT Gateways
+  include_tasks: cleanup_nat_gateways.yaml
+
+- name: Clean-up Instances
+  include_tasks: cleanup_instances.yaml
+
+- name: Clean-up Subnets
+  include_tasks: cleanup_subnets.yaml
+
+- name: Clean-up Security Groups
+  include_tasks: cleanup_security_groups.yaml
+
+- name: Clean-up VPCs
+  include_tasks: cleanup_vpcs.yaml
+
+- name: Clean-up IAM
+  include_tasks: cleanup_iam.yaml
+  loop: "{{ _cluster_ids }}"
+  loop_control:
+    loop_var: _cluster_id
+  vars:
+    _cluster_name: "{{ _cluster_id[:-6] }}"

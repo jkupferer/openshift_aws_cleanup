@@ -1,0 +1,14 @@
+---
+- name: Get elbv2 target group tags for {{ _elbv2_target_group_name }}
+  command: >-
+    aws elbv2 --region={{ _region }} describe-tags --resource-arns={{ _elbv2_target_group_arn }}
+  changed_when: false
+  register: r_elbv2_target_group_tags
+
+- name: Remove elb {{ _elbv2_target_group_name }}
+  command: >-
+    aws elbv2 --region={{ _region }} delete-target-group --target-group-arn={{ _elbv2_target_group_arn }}
+  when: _cluster_tag and _cluster_tag[22:] in _cluster_ids
+  vars:
+    _cluster_tag: >-
+      {{ r_elbv2_target_group_tags.stdout | from_json | json_query("TagDescriptions[0].Tags[?starts_with(Key, 'kubernetes.io/cluster/')].Key|[0]") }}

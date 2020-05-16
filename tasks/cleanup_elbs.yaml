@@ -1,0 +1,33 @@
+---
+- name: Get classic load balancers
+  command: >-
+    aws elb --region={{ _region }} describe-load-balancers
+  changed_when: false
+  register: r_elb_info
+
+- name: Check classic load balancers
+  include_tasks: check_elb.yaml
+  loop: >-
+    {{ r_elb_info.stdout | from_json | json_query('LoadBalancerDescriptions') }}
+  loop_control:
+    loop_var: _elb
+    label: "{{ _elb_name }}"
+  vars:
+    _elb_name: "{{ _elb.LoadBalancerName }}"
+
+- name: Get v2 load balancers
+  command: >-
+    aws elbv2 --region={{ _region }} describe-load-balancers
+  changed_when: false
+  register: r_elbv2_info
+
+- name: Check v2 load balancers
+  include_tasks: check_elbv2.yaml
+  loop: >-
+    {{ r_elbv2_info.stdout | from_json | json_query('LoadBalancers') }}
+  loop_control:
+    loop_var: _elbv2
+    label: "{{ _elbv2_name }}"
+  vars:
+    _elbv2_name: "{{ _elbv2.LoadBalancerName }}"
+    _elbv2_arn: "{{ _elbv2.LoadBalancerArn }}"
